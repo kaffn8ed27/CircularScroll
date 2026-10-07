@@ -16,10 +16,26 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class StatesDataTest {
     val context: Context = ApplicationProvider.getApplicationContext()
+    val statesList = context.resources.getStringArray(R.array.us_states)
 
     @Test
     fun `states array contains 51 items`() {
-        val states = context.resources.getStringArray(R.array.us_states)
-        assertEquals(51, states.size)
+        assertEquals(51, statesList.size)
+    }
+
+    @Test
+    fun `states array contains DC`() {
+        assert(statesList.contains("Washington, D.C."))
+    }
+
+    @Test
+    fun `states array contains no duplicates`() {
+        // Set will not allow duplicate entries
+        assertEquals(statesList.toSet().size, statesList.size)
+    }
+
+    @Test
+    fun `states array contains no null or blank entries` () {
+        assertFalse(statesList.any {it.isNullOrBlank()})
     }
 }
