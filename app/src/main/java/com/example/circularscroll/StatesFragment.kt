@@ -16,16 +16,25 @@ class StatesFragment : Fragment(R.layout.fragment_states) {
         val layoutManager = list.layoutManager as LinearLayoutManager
         list.adapter = adapter
 
-        // Start at the beginning of the middle copy
-        layoutManager.scrollToPosition(adapter.realCount)
-
-        // TEMP: disable fling while getting the basic wrap-around working
-        list.onFlingListener = object : RecyclerView.OnFlingListener() {
-            override fun onFling(velocityX: Int, velocityY: Int) = true
+        // Start at the beginning of the middle copy. On recreation (e.g. rotation) skip this,
+        // since a pending scroll position would override the RecyclerView's restored state.
+        if (savedInstanceState == null) {
+            layoutManager.scrollToPosition(adapter.realCount)
         }
 
         list.addOnScrollListener(CircularScrollListener(layoutManager, adapter.realCount))
     }
+}
+
+/**
+ * Returns how many positions to jump so that [firstVisible] lands back in the middle copy
+ * of the data: [realCount] if it's in the first copy, -[realCount] if it's in the last copy,
+ * or 0 if it's already in the middle copy.
+ */
+internal fun wrapShift(firstVisible: Int, realCount: Int) = when {
+    firstVisible < realCount -> realCount // drifted into the first copy
+    firstVisible >= realCount * 2 -> -realCount // drifted into the last copy
+    else -> 0 // still in middle copy, no need to move
 }
 
 /**
@@ -45,14 +54,21 @@ private class CircularScrollListener(
         OrientationHelper.createOrientationHelper(layoutManager, layoutManager.orientation)
 
     override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+        // Scroll events triggered by a layout (e.g. scrollToPosition) arrive mid-layout, where
+        // a new layout request is dropped, so defer the jump until the layout pass finishes
+        if (recyclerView.isInLayout) {
+            recyclerView.post { wrapIfNeeded() }
+        } else {
+            wrapIfNeeded()
+        }
+    }
+
+    private fun wrapIfNeeded() {
         val first = layoutManager.findFirstVisibleItemPosition()
         if (first == RecyclerView.NO_POSITION) return
 
-        val shift = when {
-            first < realCount -> realCount // drifted into the first copy
-            first >= realCount * 2 -> -realCount // drifted into the last copy
-            else -> return
-        }
+        val shift = wrapShift(first, realCount)
+        if (shift == 0) return
 
         val firstView = layoutManager.findViewByPosition(first) ?: return
         val offset = orientationHelper.getDecoratedStart(firstView) -
